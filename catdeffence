@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CatDeffence</title>
+    <style>
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: #333;
+            font-family: sans-serif;
+            touch-action: none;
+            overflow: hidden;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            color: #000;
+        }
+
+        #header {
+            background: #fff;
+            padding: 10px 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            z-index: 10;
+            text-align: center;
+            border-bottom: 2px solid #000;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 18px;
+            color: #000;
+            letter-spacing: 1px;
+        }
+
+        #status {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            margin-top: 5px;
+            line-height: 1.5;
+        }
+
+        #gameContainer {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #555;
+            overflow: hidden;
+        }
+
+        canvas {
+            background-color: #eee;
+            max-width: 100%;
+            max-height: 100%;
+            aspect-ratio: 360 / 600;
+            border: 4px solid #000;
+        }
+
+        #ui {
+            background: #fff;
+            padding: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.2);
+            z-index: 10;
+            text-align: center;
+            border-top: 2px solid #000;
+        }
+
+        button {
+            padding: 12px 3px;
+            font-size: 14px;
+            cursor: pointer;
+            border: 3px solid #000;
+            border-radius: 0px;
+            background-color: #eee;
+            box-shadow: 4px 4px #aaa;
+            transition: 0.1s;
+            font-weight: bold;
+            line-height: 1.4;
+            color: #000;
+        }
+
+        button:active {
+            box-shadow: 0 0 #aaa;
+            transform: translateY(4px);
+        }
+
+        button.active {
+            background-color: #000;
+            color: #fff;
+            box-shadow: 4px 4px #eee;
+        }
+
+        button.active:active {
+            box-shadow: 0 0 #eee;
+            transform: translateY(4px);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="header">
+        <h1>猫ちゃん懐柔TD</h1>
+        <div id="status">
+            【ステージ <span id="wave">1</span>/10】 資金: <span id="money">150</span>G<br>
+            懐柔: <span id="score">0</span> / <span id="targetScore">10</span> | 見逃し: <span id="escaped">0</span>/5
+        </div>
+    </div>
+
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="360" height="600"></canvas>
+    </div>
+
+    <div id="ui">
+        <button id="btnToy" class="active" onclick="setMode('toy')">おもちゃ<br>(50G/強化30G)</button>
+        <button id="btnFence" onclick="setMode('fence')">柵(壁)<br>(10G)</button>
+        <button id="btnBox" onclick="setMode('box')">箱(足止め)<br>(30G)</button>
+        <button id="btnFood" onclick="setMode('food')">またたびエサ<br>(20G)</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let wave = 1;
+        const maxWaves = 10; // 10ステージ構成
+
+        // 全10ステージの猫数・目標数・初期資金
+        const waveSettings = {
+            1: { maxCats: 10, target: 10, startMoney: 150 },
+            2: { maxCats: 12, target: 12, startMoney: 180 },
+            3: { maxCats: 15, target: 15, startMoney: 200 },
+            4: { maxCats: 18, target: 18, startMoney: 220 },
+            5: { maxCats: 20, target: 20, startMoney: 250 },
+            6: { maxCats: 22, target: 22, startMoney: 260 },
+            7: { maxCats: 25, target: 25, startMoney: 280 },
+            8: { maxCats: 28, target: 28, startMoney: 300 },
+            9: { maxCats: 30, target: 30, startMoney: 320 },
+            10: { maxCats: 40, target: 40, startMoney: 400 } // ラストボスウェーブ
+        };
+
+        let money = waveSettings[1].startMoney;
+        let catsPacified = 0;
+        let catsEscaped = 0;
+        let catsSpawned = 0;
+
+        let gameOver = false;
+        let gameClear = false;
+        let currentMode = 'toy';
+
+        let cats = [];
+        let toys = [];
+        let foods = [];
+        let boxes = [];
+        let fences = [];
+        let hearts = [];
+        let effects = [];
+
+        // --- 全10ステージ分の固有マップルート定義 ---
+        const stageMaps = {
+            1: [
+                { x: 180, y: -30 }, { x: 180, y: 120 }, { x: 60, y: 120 }, { x: 60, y: 280 },
+                { x: 300, y: 280 }, { x: 300, y: 460 }, { x: 180, y: 460 }, { x: 180, y: 640 }
+            ],
+            2: [
+                { x: 60, y: -30 }, { x: 60, y: 180 }, { x: 300, y: 180 }, { x: 300, y: 400 },
+                { x: 60, y: 400 }, { x: 60, y: 640 }
+            ],
+            3: [
+                { x: 300, y: -30 }, { x: 300, y: 100 }, { x: 60, y: 100 }, { x: 60, y: 250 },
+                { x: 300, y: 250 }, { x: 300, y: 400 }, { x: 60, y: 400 }, { x: 60, y: 550 },
+                { x: 180, y: 550 }, { x: 180, y: 640 }
+            ],
+            4: [ // ステージ4: 外周をぐるっと回る大回りルート
+                { x: 180, y: -30 }, { x: 180, y: 60 }, { x: 300, y: 60 }, { x: 300, y: 520 },
+                { x: 60, y: 520 }, { x: 60, y: 180 }, { x: 180, y: 180 }, { x: 180, y: 640 }
+            ],
+            5: [ // ステージ5: らせん風渦巻きルート
+                { x: 60, y: -30 }, { x: 60, y: 540 }, { x: 300, y: 540 }, { x: 300, y: 120 },
+                { x: 160, y: 120 }, { x: 160, y: 380 }, { x: 220, y: 380 }, { x: 220, y: 640 }
+            ],
+            6: [ // ステージ6: 中央でクロスする交差ルート
+                { x: 180, y: -30 }, { x: 180, y: 200 }, { x: 60, y: 200 }, { x: 60, y: 380 },
+                { x: 300, y: 380 }, { x: 300, y: 200 }, { x: 180, y: 200 }, { x: 180, y: 640 }
+            ],
+            7: [ // ステージ7: M字型の激しい上下ルート
+                { x: 60, y: -30 }, { x: 60, y: 450 }, { x: 140, y: 100 }, { x: 220, y: 450 },
+                { x: 300, y: 100 }, { x: 300, y: 640 }
+            ],
+            8: [ // ステージ8: 距離がかなり短い直線クネクネルート
+                { x: 60, y: -30 }, { x: 180, y: 60 }, { x: 60, y: 150 }, { x: 300, y: 240 },
+                { x: 60, y: 330 }, { x: 300, y: 420 }, { x: 300, y: 640 }
+            ],
+            9: [ // ステージ9: 画面端を細かく往復するルート
+                { x: 180, y: -30 }, { x: 300, y: 50 }, { x: 60, y: 120 }, { x: 300, y: 190 },
+                { x: 60, y: 260 }, { x: 300, y: 330 }, { x: 60, y: 400 }, { x: 300, y: 470 },
+                { x: 180, y: 540 }, { x: 180, y: 640 }
+            ],
+            10: [ // ステージ10: 最終試練・超蛇行ロングマップ
+                { x: 180, y: -30 }, { x: 180, y: 50 }, { x: 60, y: 50 }, { x: 60, y: 550 },
+                { x: 300, y: 550 }, { x: 300, y: 150 }, { x: 130, y: 150 }, { x: 130, y: 450 },
+                { x: 220, y: 450 }, { x: 220, y: 250 }, { x: 180, y: 250 }, { x: 180, y: 640 }
+            ]
+        };
+
+        // --- ドット絵パターン再定義 (スペース:透明, .:白(体), #:黒(線)) ---
+        const catPattern = [
+            " ####         ####  ", " #...#########...#  ", " #...............#  ", " #...............#  ",
+            "#.................# ", "#.................# ", "#.................# ", "#...##.......##...# ",
+            "#...##.......##...# ", "#.................# ", " #...............#  ", " #.#.....#.....#.#  ",
+            "  #.....#.#.....#   ", " #.##..#....#.##.#  ", "    ####   ####     ", "        ###         "
+        ];
+
+        const fastCatPattern = [
+            " ####         ####  ", " #...#.#.#.#.#...#  ", " #...............#  ", " #...#.#.#.#.#...#  ",
+            "#.................# ", "#....#.#.#.#.#....# ", "#.................# ", "#...##.......##...# ",
+            "#...##.......##...# ", "#.................# ", " #...............#  ", " #.#.....#.....#.#  ",
+            "  #.....#.#.....#   ", " #.##..#....#.##.#  ", "    ####   ####     ", "        ###         "
+        ];
+
+        const heavyCatPattern = [
+            "  #######     #######   ", " ##.....#######.....##  ", "##...................## ", "##...................## ",
+            "##...................## ", "##...................## ", "##...###.......###...## ", "##...###.......###...## ",
+            "##...................## ", " ##.................##  ", " ##..##...###...##..##  ", "  ##...###...###...##   ",
+            "   #################    ", "     #############      ", "       .........        "
+        ];
+
+        const toyPattern = [
+            "   ########   ", " ##........## ", "#..........#.#", "#.........#..#",
+            "#..######.#..#", "#.#......#.#.#", "#.#.#####..#.#", "#.#.#....#.#.#",
+            "#.#.#.##.#.#.#", "#.#.#....#.#.#", "#.#.#####..#.#", "#.#......#.#.#",
+            "#..######.#..#", "#..........#.#", " ##........## ", "   ########   "
+        ];
+
+        const boxPattern = [
+            "                ", "                ", "    ########    ", "   #........#   ",
+            "  #..........#  ", " #..########..# ", "#..#........#..#", "#..#........#..#",
+            "#..#........#..#", "#..#........#..#", "#..#........#..#", "#..#........#..#",
+            " #..########..# ", "  #..........#  ", "   #........#   ", "    ########    "
+        ];
+
+        const fencePattern = [
+            "################", "################", "##............##", "##............##",
+            "##............##", "################", "################", "##............##",
+            "##............##", "##............##", "################", "################",
+            "##............##", "##............##", "##............##", "################"
+        ];
+
+        const foodPattern = [
+            "        ########", "      ##..####..", "    ##....##....", "########..####..",
+            "      ########..", "    ##........##", "    ##........##", "    ##........##",
+            "    ##........##", "    ##........##", "    ##........##", "    ##........##",
+            "    ##........##", "    ##........##", "      ########..", "        ########"
+        ];
+
+        const heartPattern = [
+            "      ####      ", "    ##....##    ", "   #..##..##..# ", "  #....####....#",
+            "  #....####....#", "   #..##..##..# ", "    ##....##    ", "      ####      "
+        ];
+
+        const miniHeartPattern = [
+            "  ##  ##  ", " ######## ", " ######## ", "  ######  ", "   ####   ", "    ##    "
+        ];
+
+        function drawPattern(pattern, x, y, scale, color) {
+            for (let i = 0; i < pattern.length; i++) {
+                for (let j = 0; j < pattern[i].length; j++) {
+                    const char = pattern[i][j];
+                    if (char === "#") {
+                        ctx.fillStyle = color;
+                        ctx.fillRect(x + j * scale, y + i * scale, scale, scale);
+                    } else if (char === ".") {
+                        ctx.fillStyle = "#eee";
+                        ctx.fillRect(x + j * scale, y + i * scale, scale, scale);
+                    }
+                }
+            }
+        }
+
+        function drawMapRoute() {
+            const currentMap = stageMaps[wave];
+            ctx.strokeStyle = "#ddd";
+            ctx.lineWidth = 40;
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            ctx.beginPath();
+            ctx.moveTo(currentMap[0].x, currentMap[0].y);
+            for (let i = 1; i < currentMap.length; i++) {
+                ctx.lineTo(currentMap[i].x, currentMap[i].y);
+            }
+            ctx.stroke();
+
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function updateUI() {
+            document.getElementById('wave').innerText = wave;
+            document.getElementById('money').innerText = money;
+            document.getElementById('score').innerText = catsPacified;
+            document.getElementById('targetScore').innerText = waveSettings[wave].target;
+            document.getElementById('escaped').innerText = catsEscaped;
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.getElementById('btnToy').className = mode === 'toy' ? 'active' : '';
+            document.getElementById('btnFence').className = mode === 'fence' ? 'active' : '';
+            document.getElementById('btnBox').className = mode === 'box' ? 'active' : '';
+            document.getElementById('btnFood').className = mode === 'food' ? 'active' : '';
+        }
+
+        function resetGame() {
+            wave = 1;
+            money = waveSettings[1].startMoney;
+            catsPacified = 0;
+            catsEscaped = 0;
+            catsSpawned = 0;
+            gameOver = false;
+            gameClear = false;
+            cats = []; toys = []; foods = []; boxes = []; fences = []; hearts = []; effects = [];
+            updateUI();
+        }
+
+        const boxRange = 22;
+        const fenceOverlap = 22;
+        const heartHitRange = 15;
+
+        canvas.addEventListener('pointerdown', (e) => {
+            if (gameOver || gameClear) {
+                resetGame();
+                return;
+            }
+
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = (e.clientX - rect.left) * scaleX;
+            const y = (e.clientY - rect.top) * scaleY;
+
+            for (let toy of toys) {
+                let dist = Math.hypot(toy.x - x, toy.y - y);
+                if (dist < 16) {
+                    if (toy.level < 3 && money >= 30) {
+                        money -= 30;
+                        toy.level++;
+                        toy.range += 20;
+                        toy.maxCooldown -= 10;
+                        updateUI();
+                        return;
+                    }
+                }
+            }
+
+            if (currentMode === 'toy' && money >= 50) {
+                toys.push({ x: x, y: y, range: 80, cooldown: 0, maxCooldown: 45, level: 1 });
+                money -= 50;
+            } else if (currentMode === 'fence' && money >= 10) {
+                fences.push({ x: x, y: y, hp: 150, maxHp: 150 });
+                money -= 10;
+            } else if (currentMode === 'box' && money >= 30) {
+                boxes.push({ x: x, y: y, hp: 3 });
+                money -= 30;
+            } else if (currentMode === 'food' && money >= 20) {
+                foods.push({ x: x, y: y, amount: 300 });
+                money -= 20;
+            }
+            updateUI();
+        });
+
+        function createPacifiedEffect(x, y) {
+            for (let i = 0; i < 5; i++) {
+                let angle = (Math.PI * 2 / 5) * i + Math.random() * 0.4;
+                let speed = 1.5 + Math.random() * 1.5;
+                effects.push({ x: x, y: y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 25 });
+            }
+        }
+
+        function spawnCat() {
+            let currentSettings = waveSettings[wave];
+            const currentMap = stageMaps[wave];
+
+            if (catsSpawned < currentSettings.maxCats && Math.random() < 0.025) {
+                let speedBonus = (wave - 1) * 0.08;
+                let catType = 'normal';
+                let rand = Math.random();
+
+                // 後半ステージほど強い・速い猫の割合が増える
+                if (wave >= 3 && wave <= 6) {
+                    if (rand < 0.3) catType = 'fast';
+                    else if (rand < 0.45) catType = 'heavy';
+                } else if (wave >= 7) {
+                    if (rand < 0.4) catType = 'fast';
+                    else if (rand < 0.65) catType = 'heavy';
+                }
+
+                let hp = 100 + (wave - 1) * 10;
+                let speed = 0.6 + Math.random() * 0.3 + speedBonus;
+                let pattern = catPattern;
+
+                if (catType === 'fast') {
+                    hp = Math.floor(hp * 0.5);
+                    speed *= 1.7;
+                    pattern = fastCatPattern;
+                } else if (catType === 'heavy') {
+                    hp = Math.floor(hp * 2.3);
+                    speed *= 0.6;
+                    pattern = heavyCatPattern;
+                }
+
+                cats.push({
+                    x: currentMap[0].x, y: currentMap[0].y, targetWaypointIndex: 1,
+                    speed: speed, baseSpeed: speed, hp: hp, maxHp: hp, stopTimer: 0,
+                    type: catType, pattern: pattern
+                });
+                catsSpawned++;
+            }
+        }
+
+        function drawPixelNumber(ctx, number, x, y, scale, color) {
+            const pattern = [
+                ["####", "#..#", "#..#", "#..#", "####"], ["..#.", ".##.", "..#.", "..#.", "####"],
+                ["####", "..#.", "####", "#...", "####"], ["####", "..#.", "####", "..#.", "####"],
+                ["#..#", "#..#", "####", "..#.", "..#."], ["####", "#...", "####", "..#.", "####"],
+                ["####", "#...", "####", "#..#", "####"], ["####", "..#.", "..#.", "..#.", "..#."],
+                ["####", "#..#", "####", "#..#", "####"], ["####", "#..#", "####", "..#.", "####"]
+            ];
+            const numString = String(number);
+            const numWidth = pattern[0][0].length * scale + 2;
+            for (let i = 0; i < numString.length; i++) {
+                const digit = parseInt(numString[numString.length - 1 - i]);
+                const p = pattern[digit];
+                const digitX = x - i * numWidth;
+                ctx.fillStyle = color;
+                for (let j = 0; j < p.length; j++) {
+                    for (let k = 0; k < p[j].length; k++) {
+                        if (p[j][k] === "#") ctx.fillRect(digitX + k * scale, y + j * scale, scale, scale);
+                    }
+                }
+            }
+        }
+
+        function update() {
+            if (!gameOver && !gameClear) {
+                spawnCat();
+
+                for (let i = foods.length - 1; i >= 0; i--) {
+                    foods[i].amount--;
+                    if (foods[i].amount <= 0) foods.splice(i, 1);
+                }
+
+                for (let i = cats.length - 1; i >= 0; i--) {
+                    let cat = cats[i];
+                    if (cat.stopTimer > 0) { cat.stopTimer--; continue; }
+
+                    let catchedByBox = false;
+                    for (let j = boxes.length - 1; j >= 0; j--) {
+                        let box = boxes[j];
+                        if (Math.hypot(box.x - cat.x, box.y - cat.y) < boxRange) {
+                            cat.stopTimer = 180; cat.x = box.x; cat.y = box.y; box.hp--;
+                            if (box.hp <= 0) boxes.splice(j, 1);
+                            catchedByBox = true; break;
+                        }
+                    }
+                    if (catchedByBox) continue;
+
+                    let inFoodRange = false;
+                    foods.forEach(food => { if (Math.hypot(food.x - cat.x, food.y - cat.y) < 50) inFoodRange = true; });
+                    cat.speed = inFoodRange ? cat.baseSpeed * 0.4 : cat.baseSpeed;
+
+                    const currentMap = stageMaps[wave];
+                    let target = currentMap[cat.targetWaypointIndex];
+                    let angle = Math.atan2(target.y - cat.y, target.x - cat.x);
+
+                    cat.x += Math.cos(angle) * cat.speed;
+                    cat.y += Math.sin(angle) * cat.speed;
+
+                    if (Math.hypot(target.x - cat.x, target.y - cat.y) < 4) {
+                        cat.targetWaypointIndex++;
+                        if (cat.targetWaypointIndex >= currentMap.length) {
+                            catsEscaped++; cats.splice(i, 1); updateUI();
+                            if (catsEscaped >= 5) gameOver = true;
+                            continue;
+                        }
+                    }
+
+                    for (let j = fences.length - 1; j >= 0; j--) {
+                        let fence = fences[j];
+                        let dx = cat.x - fence.x; let dy = cat.y - fence.y; let dist = Math.hypot(dx, dy);
+                        if (dist < fenceOverlap) {
+                            let overlap = fenceOverlap - dist;
+                            let pushAngle = dist === 0 ? Math.random() * Math.PI * 2 : Math.atan2(dy, dx);
+                            cat.x += Math.cos(pushAngle) * overlap; cat.y += Math.sin(pushAngle) * overlap;
+                            fence.hp -= 0.5; if (fence.hp <= 0) fences.splice(j, 1);
+                        }
+                    }
+                }
+
+                for (let i = hearts.length - 1; i >= 0; i--) {
+                    let heart = hearts[i]; let cat = heart.target;
+                    if (!cats.includes(cat)) { hearts.splice(i, 1); continue; }
+
+                    let angle = Math.atan2(cat.y - heart.y, cat.x - heart.x);
+                    heart.x += Math.cos(angle) * heart.speed; heart.y += Math.sin(angle) * heart.speed;
+
+                    if (Math.hypot(cat.x - heart.x, cat.y - heart.y) < heartHitRange) {
+                        cat.hp -= 20; hearts.splice(i, 1);
+                        if (cat.hp <= 0) {
+                            let index = cats.indexOf(cat);
+                            if (index > -1) {
+                                createPacifiedEffect(cat.x, cat.y);
+                                cats.splice(index, 1); catsPacified++; money += 20; updateUI();
+                            }
+                        }
+                    }
+                }
+
+                for (let i = effects.length - 1; i >= 0; i--) {
+                    let fx = effects[i]; fx.x += fx.vx; fx.y += fx.vy; fx.life--;
+                    if (fx.life <= 0) effects.splice(i, 1);
+                }
+
+                let currentSettings = waveSettings[wave];
+                if (catsPacified + catsEscaped === currentSettings.maxCats && cats.length === 0) {
+                    if (wave < maxWaves) {
+                        wave++; catsSpawned = 0; catsPacified = 0; catsEscaped = 0;
+                        money = waveSettings[wave].startMoney;
+                        toys = []; fences = []; boxes = []; foods = []; hearts = []; effects = [];
+                        updateUI();
+                    } else {
+                        gameClear = true;
+                    }
+                }
+            }
+
+            // --- 描画処理 ---
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "#eee"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            drawMapRoute();
+
+            foods.forEach(food => {
+                ctx.globalAlpha = food.amount / 300; drawPattern(foodPattern, food.x - 16, food.y - 16, 2, "#000"); ctx.globalAlpha = 1.0;
+                ctx.beginPath(); ctx.arc(food.x, food.y, 50, 0, Math.PI * 2); ctx.strokeStyle = "rgba(0,0,0,0.1)"; ctx.stroke();
+            });
+
+            cats.forEach(cat => {
+                let drawX = cat.x - (cat.pattern[0].length * 2) / 2; let drawY = cat.y - (cat.pattern.length * 2) / 2;
+                drawPattern(cat.pattern, drawX, drawY, 2, "#000");
+                let hpRatio = Math.max(0, cat.hp / cat.maxHp);
+                ctx.fillStyle = "#ccc"; ctx.fillRect(cat.x - 15, cat.y - 24, 30, 4);
+                ctx.fillStyle = "#000"; ctx.fillRect(cat.x - 15, cat.y - 24, 30 * hpRatio, 4);
+                ctx.strokeStyle = "#000"; ctx.lineWidth = 1; ctx.strokeRect(cat.x - 15, cat.y - 24, 30, 4);
+            });
+
+            fences.forEach(fence => {
+                drawPattern(fencePattern, fence.x - 16, fence.y - 16, 2, "#000");
+                ctx.fillStyle = "#ccc"; ctx.fillRect(fence.x - 15, fence.y - 18, 30, 4);
+                ctx.fillStyle = "#000"; ctx.fillRect(fence.x - 15, fence.y - 18, 30 * (fence.hp / fence.maxHp), 4);
+                ctx.strokeRect(fence.x - 15, fence.y - 18, 30, 4);
+            });
+
+            boxes.forEach(box => {
+                drawPattern(boxPattern, box.x - 16, box.y - 16, 2, "#000");
+                drawPixelNumber(ctx, box.hp, box.x + 12, box.y + 12, 1, "#000");
+            });
+
+            toys.forEach(toy => {
+                drawPattern(toyPattern, toy.x - 16, toy.y - 16, 2, "#000");
+                drawPixelNumber(ctx, toy.level, toy.x, toy.y - 22, 1, "#000");
+                ctx.beginPath(); ctx.arc(toy.x, toy.y, toy.range, 0, Math.PI * 2); ctx.strokeStyle = `rgba(0, 0, 0, ${0.12 * toy.level})`; ctx.lineWidth = 1.5; ctx.stroke();
+
+                if (!gameOver && !gameClear && toy.cooldown > 0) toy.cooldown--;
+                if (!gameOver && !gameClear && toy.cooldown === 0) {
+                    for (let cat of cats) {
+                        if (Math.hypot(cat.x - toy.x, cat.y - toy.y) <= toy.range) {
+                            hearts.push({ x: toy.x, y: toy.y, target: cat, speed: 5 }); toy.cooldown = toy.maxCooldown; break;
+                        }
+                    }
+                }
+            });
+
+            hearts.forEach(heart => { drawPattern(heartPattern, heart.x - 8, heart.y - 8, 2, "#000"); });
+            effects.forEach(fx => { if (fx.life % 2 === 0) drawPattern(miniHeartPattern, fx.x - 5, fx.y - 3, 1, "#000"); });
+
+            if (gameOver) {
+                ctx.fillStyle = "rgba(255, 255, 255, 0.85)"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.font = "bold 26px sans-serif";
+                ctx.fillText("ゲームオーバー...", canvas.width / 2, canvas.height / 2 - 20); ctx.font = "14px sans-serif"; ctx.fillText("画面をタップして最初からリトライ", canvas.width / 2, canvas.height / 2 + 30);
+            } else if (gameClear) {
+                ctx.fillStyle = "rgba(255, 255, 255, 0.85)"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = "#000"; ctx.textAlign = "center"; ctx.font = "bold 26px sans-serif";
+                ctx.fillText("グランドクリア！", canvas.width / 2, canvas.height / 2 - 30); ctx.font = "16px sans-serif"; ctx.fillText("全10ステージを完全制覇しました！", canvas.width / 2, canvas.height / 2 + 10); ctx.font = "13px sans-serif"; ctx.fillText("画面タップで最初から遊ぶ", canvas.width / 2, canvas.height / 2 + 50);
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        updateUI();
+        update();
+
+    </script>
+</body>
+
+</html>
