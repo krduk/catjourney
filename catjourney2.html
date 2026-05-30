@@ -930,6 +930,104 @@
             }
         }
         
+        function drawSky(dayProgress, visualX) {
+            ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            if (dayProgress < 0.25 || dayProgress > 0.75) {
+                ctx.fillStyle = "#fff";
+                for (let i = 0; i < 40; i++) {
+                    let sx = ((Math.floor(i * 123 - visualX * 0.1) % canvas.width) + canvas.width) % canvas.width;
+                    let sy = (i * 37) % (canvas.height / 2.5);
+                    ctx.fillRect(sx, sy, 1, 1);
+                }
+            }
+            let sunY = 200, moonY = 200, sunX = 0, moonX = 0;
+            if (dayProgress >= 0.2 && dayProgress <= 0.8) {
+                let p = (dayProgress - 0.2) / 0.6;
+                sunX = canvas.width - (p * canvas.width); sunY = 110 - Math.sin(p * Math.PI) * 80;
+            } else {
+                let p = dayProgress < 0.2 ? (dayProgress + 0.2) / 0.4 : (dayProgress - 0.8) / 0.4;
+                moonX = canvas.width - (p * canvas.width); moonY = 110 - Math.sin(p * Math.PI) * 80;
+            }
+            ctx.fillStyle = "#fff";
+            if (sunY < 180) { ctx.beginPath(); ctx.arc(sunX, sunY, 10, 0, Math.PI * 2); ctx.fill(); }
+            if (moonY < 180) { ctx.beginPath(); ctx.arc(moonX, moonY, 8, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#000"; ctx.beginPath(); ctx.arc(moonX - 3, moonY - 2, 7, 0, Math.PI * 2); ctx.fill(); }
+        }
+
+        function drawEnvironment(visualX, boundaryScreenX, currentSea, upcomingSea, currentBg, upcomingBg) {
+            ctx.fillStyle = "#fff"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1;
+
+            ctx.beginPath();
+            for (let x = 0; x < canvas.width; x += 2) {
+                let isSea = (boundaryScreenX != null && x >= boundaryScreenX) ? upcomingSea : currentSea;
+                let y = groundY;
+                if (isSea) {
+                    y = groundY + 3 + Math.sin(x * 0.05 + visualX * 0.02) * 3;
+                }
+                if (x === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            if (boundaryScreenX != null && boundaryScreenX > -40 && boundaryScreenX < canvas.width + 40) {
+                if (currentSea !== upcomingSea) {
+                    ctx.fillStyle = "#fff";
+                    for (let i = 0; i < 30; i++) {
+                        ctx.fillRect(boundaryScreenX - 20 + Math.random() * 40, groundY + Math.random() * 15, 1, 1);
+                    }
+                    ctx.fillRect(boundaryScreenX - 15, groundY, 30, 2);
+                    ctx.fillRect(boundaryScreenX - 10, groundY + 2, 2, 8);
+                    ctx.fillRect(boundaryScreenX + 8, groundY + 2, 2, 8);
+                } else {
+                    ctx.fillRect(boundaryScreenX, groundY - 15, 2, 15);
+                    ctx.beginPath(); ctx.arc(boundaryScreenX + 1, groundY - 15, 6, 0, Math.PI * 2); ctx.fill();
+                }
+            }
+
+            let leftW = visualX - catX, rightW = leftW + canvas.width;
+            for (let wx = Math.floor((leftW - 40) / 40) * 40; wx <= rightW + 40; wx += 40) {
+                let screenX = wx - visualX + catX;
+                let isSea = (boundaryScreenX != null && screenX >= boundaryScreenX) ? upcomingSea : currentSea;
+                let bgType = (boundaryScreenX != null && screenX >= boundaryScreenX) ? upcomingBg : currentBg;
+
+                let seed = Math.sin(wx) * 10000, rand = seed - Math.floor(seed);
+                if (rand > 0.45) {
+                    if (isSea) {
+                        if (rand > 0.7) { drawSprite(landmarkSprites["wave"], screenX - 4, groundY + 4, 1); }
+                    } else {
+                        switch (bgType) {
+                            case "urban_asia": case "urban_amer": case "urban_euro":
+                                if (rand > 0.6) { ctx.fillRect(screenX, groundY - 30, 8, 30); ctx.fillStyle = "#000"; ctx.fillRect(screenX + 2, groundY - 25, 4, 1); ctx.fillStyle = "#fff"; }
+                                else { ctx.fillRect(screenX + 5, groundY - 15, 1, 15); ctx.beginPath(); ctx.arc(screenX + 5, groundY - 17, 2, 0, Math.PI * 2); ctx.fill(); } break;
+                            case "desert":
+                                if (rand > 0.6) { ctx.beginPath(); ctx.moveTo(screenX, groundY); ctx.lineTo(screenX + 15, groundY - 15); ctx.lineTo(screenX + 30, groundY); ctx.closePath(); ctx.stroke(); }
+                                else { ctx.beginPath(); ctx.arc(screenX + 15, groundY, 15, Math.PI, 0); ctx.stroke(); } break;
+                            case "antarctic":
+                                if (rand > 0.7) { ctx.beginPath(); ctx.arc(screenX + 5, groundY, 5, Math.PI, 0); ctx.stroke(); }
+                                else { ctx.fillRect(screenX, groundY - 6, 4, 6); } break;
+                            default:
+                                if (rand > 0.6) { ctx.fillRect(screenX + 4, groundY - 12, 2, 12); ctx.beginPath(); ctx.moveTo(screenX + 5, groundY - 14); ctx.lineTo(screenX + 1, groundY - 10); ctx.lineTo(screenX + 9, groundY - 10); ctx.fill(); }
+                                else { ctx.fillRect(screenX + 2, groundY - 6, 8, 6); } break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        function drawLandmarks(visualX, activeLandmarks) {
+            activeLandmarks.forEach(l => {
+                let screenX = (l.targetVisualX - visualX) + catX;
+
+                if (screenX >= -150 && screenX <= 350) {
+                    ctx.strokeStyle = "#fff"; ctx.fillStyle = "#fff"; ctx.lineWidth = 2;
+                    let y = l.onWater ? groundY + 3 : groundY;
+                    if (landmarkSprites[l.type]) {
+                        let spriteHeight = landmarkSprites[l.type].length * 2;
+                        drawSprite(landmarkSprites[l.type], screenX, y - spriteHeight, 2);
+                    }
+                }
+            });
+        }
+
         function drawItems(visualX) {
             gameState.items.forEach(item => {
                 let screenX = item.visualX - visualX + catX;
@@ -990,7 +1088,6 @@
                     do { nextIndex = Math.floor(Math.random() * landmarks.length); }
                     while (nextIndex === gameState.currentLandmarkIndex);
                     
-                    // Award currency for arrival
                     const distTraveled = Math.abs(landmarks[gameState.nextLandmarkIndex].dist - landmarks[gameState.currentLandmarkIndex].dist);
                     gameState.cat += Math.floor(distTraveled * 100);
                     updateUI();
@@ -1019,7 +1116,7 @@
                     gameState.mapProgress = 1;
                     gameState.currentLandmarkIndex = gameState.nextLandmarkIndex;
                     gameState.state = 'waiting';
-                    gameState.waitTimer = 3.0; // Longer wait time
+                    gameState.waitTimer = 3.0; 
                     if(gameState.arrivalVisualX) {
                         gameState.visualScrollX = gameState.arrivalVisualX - catX - 40;
                     }
@@ -1039,28 +1136,55 @@
             map.panTo([gameState.currentLat, displayLng], { animate: true, duration: 0.5 });
             
             const realSeaState = getSeaStateRealtime(gameState.currentLat, displayLng);
-            let catIsSea = realSeaState; // Simplified sea state for cat animation
-            
+            const realBgType = gameState.mapProgress > 0.5 ? nextL.bgType : currentL.bgType;
+
+            if (gameState.state === 'waiting') {
+                gameState.currentSeaState = realSeaState;
+                gameState.currentBgType = realBgType;
+            } else {
+                if (gameState.boundaryVisualX === null &&
+                    (gameState.currentSeaState !== realSeaState || gameState.currentBgType !== realBgType)) {
+                    gameState.upcomingSeaState = realSeaState;
+                    gameState.upcomingBgType = realBgType;
+                    gameState.boundaryVisualX = gameState.visualScrollX + canvas.width + 20;
+                }
+            }
+
+            let currentBoundaryScreenX = null;
+            if (gameState.boundaryVisualX != null) {
+                currentBoundaryScreenX = gameState.boundaryVisualX - gameState.visualScrollX + catX;
+                if (currentBoundaryScreenX < -40) {
+                    gameState.currentSeaState = gameState.upcomingSeaState;
+                    gameState.currentBgType = gameState.upcomingBgType;
+                    gameState.boundaryVisualX = null;
+                    currentBoundaryScreenX = null;
+                }
+            }
+
+            let catIsSea = (currentBoundaryScreenX != null && catX >= currentBoundaryScreenX) ? gameState.upcomingSeaState : gameState.currentSeaState;
+
             manageItems(gameState.visualScrollX, catIsSea);
 
             // --- Drawing ---
-            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear screen
-            
-            // Sky
-            ctx.fillStyle = "#000"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // Ground
-            ctx.strokeStyle = "#fff"; ctx.lineWidth = 1;
-            ctx.beginPath();
-            for (let x = 0; x < canvas.width; x += 2) {
-                let y = groundY;
-                if (catIsSea) {
-                    y = groundY + 3 + Math.sin(x * 0.05 + gameState.visualScrollX * 0.02) * 3;
-                }
-                if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            }
-            ctx.stroke();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            elapsedGameSeconds += deltaTime * speedMult;
+            const dayProgress = (elapsedGameSeconds % 86400) / 86400;
+            drawSky(dayProgress, gameState.visualScrollX);
+
+            drawEnvironment(gameState.visualScrollX, currentBoundaryScreenX, gameState.currentSeaState, gameState.upcomingSeaState, gameState.currentBgType, gameState.upcomingBgType);
+
+            let activeLandmarksToDraw = [];
+            if (gameState.state === 'waiting') {
+                activeLandmarksToDraw.push({ ...currentL, targetVisualX: gameState.visualScrollX + catX + 40 });
+            } else {
+                activeLandmarksToDraw.push({ ...currentL, targetVisualX: gameState.departureVisualX + catX + 40 });
+                if (gameState.arrivalVisualX) {
+                    activeLandmarksToDraw.push({ ...nextL, targetVisualX: gameState.arrivalVisualX });
+                }
+            }
+            drawLandmarks(gameState.visualScrollX, activeLandmarksToDraw);
+            
             drawItems(gameState.visualScrollX);
             
             targetDisplay.textContent = gameState.state === 'waiting' ? `Arrived: ${currentL.name}` : `Destination: ${nextL.name}`;
