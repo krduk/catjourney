@@ -13,16 +13,13 @@
     <style>
         body {
             margin: 0;
-            padding: 0;
+            padding: 20px 0;
             background-color: #000;
             color: #fff;
             font-family: 'Courier New', Courier, monospace;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
-            height: 100vh;
-            overflow: hidden;
         }
 
         #game-container {
@@ -254,7 +251,7 @@
             "helsinki_cathedral": ["......#......", "....#####....", "   #######   ", "  #########  ", " ########### ", "#############", "#############"],
             "edinburgh_castle": ["  ##     ##  ", "####   ####", "###### ######", "#############", "#############"],
             "willis_tower": ["....##....", "....##....", "  ######  ", "  ######  ", "  ######  ", " ######## ", " ######## ", " ######## "],
-            "space_needle": ["....#....", "...###...", " ####### ", "  #####  ", "....#....", "....#....", "...###...", "  #####  "],
+            "space_needle": ["....#....", "...###...", " ####### ", "  #####  ", "....#....", "....#....", "....#..."],
             "vancouver_bridge": ["##.......##", "##.......##", "###########", "###########", "..........."],
             "bali_gates": ["###     ###", "###     ###", "###     ###", "###     ###", "###     ###", "###     ###"],
             "chennai_temple": ["....#....", "...###...", "  #####  ", " ####### ", "#########", "#########"],
@@ -857,7 +854,7 @@
             elapsedGameSeconds += deltaTime * speedMult;
             const dayProgress = (elapsedGameSeconds % 86400) / 86400;
             drawSky(dayProgress, gameState.visualScrollX);
-            drawEnvironment(gameState.visualScrollX, currentBoundaryScreenX, gameState.currentSeaState, gameState.upcomingSeaState, gameState.currentBgType, gameState.upcomingBgType);
+            drawEnvironment(gameState.visualScrollX, currentBoundaryScreenX, gameState.currentSeaState, gameState.upcomingSeaState, gameState.currentBgType, gameState.upcomingBg);
 
             let activeLandmarksToDraw = [];
             if (gameState.state === 'waiting') {
