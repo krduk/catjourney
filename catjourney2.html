@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -107,40 +108,29 @@
         }
 
         button {
-            background-color: #fff;
-            color: #000;
-            border: none;
-            padding: 6px 12px;
+            background-color: #1a1a1a;
+            color: #fff;
+            border: 1px solid #fff;
+            padding: 8px 14px;
             font-weight: bold;
             cursor: pointer;
             font-family: inherit;
-            font-size: 12px;
-            border-radius: 4px;
+            font-size: 13px;
+            border-radius: 0;
             transition: background-color 0.2s, color 0.2s;
+            text-transform: uppercase;
         }
 
         button:hover {
-            background-color: #ccc;
-        }
-        
-        button.upgrade-btn {
-            background-color: #4CAF50; color: white;
-        }
-        button.upgrade-btn:hover {
-             background-color: #45a049;
+            background-color: #fff;
+            color: #000;
         }
 
-        #gmap-btn {
-            background-color: #4285F4;
-            color: white;
-        }
-        #gmap-btn:hover {
-            background-color: #3367D6;
-        }
-        
-        #speed-toggle-btn{
-            background-color: #f44336; color: white;
-            min-width: 120px;
+        button:disabled {
+            color: #555;
+            border-color: #555;
+            cursor: not-allowed;
+            background-color: #1a1a1a;
         }
     </style>
 </head>
@@ -162,9 +152,10 @@
         
         <div class="controls-container">
             <button id="speed-toggle-btn">Speed: FAST</button>
-            <button id="upgrade-speed-btn" class="upgrade-btn">Upgrade Speed (Cost: 10)</button>
-            <button id="upgrade-item-btn" class="upgrade-btn">Upgrade Items (Cost: 10)</button>
-            <button id="upgrade-click-btn" class="upgrade-btn">Upgrade Click (Cost: 10)</button>
+            <button id="upgrade-speed-btn">Upgrade Speed (Cost: 10)</button>
+            <button id="upgrade-item-btn">Upgrade Items (Cost: 10)</button>
+            <button id="upgrade-click-btn">Upgrade Click (Cost: 10)</button>
+            <button id="boost-btn">Boost (Cost: 50)</button>
         </div>
         
         <div class="save-load-container">
@@ -191,7 +182,7 @@
         const upgradeSpeedBtn = document.getElementById('upgrade-speed-btn');
         const upgradeItemBtn = document.getElementById('upgrade-item-btn');
         const upgradeClickBtn = document.getElementById('upgrade-click-btn');
-
+        const boostBtn = document.getElementById('boost-btn');
 
         const catX = 60;
         const groundY = 140;
@@ -460,8 +451,6 @@
             "wave": [
                 ".##.##..", "#..#..#.", ".##.##.#"
             ],
-
-            // === 固有名所グラフィック ===
             "tokyo_tower": [
                 "....#....", "....#....", "....#....", "...###...", "...###...", "..#.#.#..", "..#.#.#..", ".#..#..#.",
                 ".#..#..#.", "#########", "#########", "##.....##", "##.....##"
@@ -579,8 +568,6 @@
             "valparaiso_funicular": [
                 "      ##", "    ####", "  ######", "########"
             ],
-
-            // === モアイ使い回し撤廃用の汎用新規スプライト ===
             "small_island": [
                 "     ###     ",
                 "    #####    ",
@@ -822,15 +809,17 @@
                 speedLevel: 1,
                 itemLevel: 1,
                 clickLevel: 1,
-                speedMode: 'FAST', // 'FAST' or 'SLOW'
-                items: []
+                speedMode: 'FAST',
+                items: [],
+                boostTimer: 0,
+                boostMultiplier: 4,
             };
             updateUI();
         }
 
         function getSpeedMultiplier() {
             if (gameState.speedMode === 'SLOW') return 1.0;
-            return Math.pow(gameState.speedLevel, 2);
+            return Math.pow(1.4, gameState.speedLevel - 1);
         }
 
         function updateUI() {
@@ -839,20 +828,16 @@
             upgradeItemBtn.textContent = `Upgrade Items (Cost: ${getUpgradeCost(gameState.itemLevel)})`;
             upgradeClickBtn.textContent = `Upgrade Click (Cost: ${getUpgradeCost(gameState.clickLevel)})`;
             speedToggleBtn.textContent = `Speed: ${gameState.speedMode}`;
-            if(gameState.speedMode === 'FAST') {
-                speedToggleBtn.style.backgroundColor = '#f44336';
-            } else {
-                 speedToggleBtn.style.backgroundColor = '#4285F4';
-            }
+            boostBtn.textContent = `Boost (Cost: 50) ${gameState.boostTimer > 0 ? `(${gameState.boostTimer.toFixed(1)}s)` : ''}`;
+            boostBtn.disabled = gameState.boostTimer > 0;
         }
         
-        // Event Listeners
         canvas.addEventListener('click', (e) => {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
             const clickX = (e.clientX - rect.left) * scaleX;
             
-            if (clickX >= catX && clickX <= catX + 26) { // Cat sprite width approx 13*2
+            if (clickX >= catX && clickX <= catX + 26) {
                 gameState.cat += gameState.clickLevel;
                 updateUI();
             }
@@ -890,6 +875,15 @@
             }
         });
 
+        boostBtn.addEventListener('click', () => {
+            const cost = 50;
+            if (gameState.cat >= cost && gameState.boostTimer <= 0) {
+                gameState.cat -= cost;
+                gameState.boostTimer = 10;
+                updateUI();
+            }
+        });
+
         saveBtn.addEventListener('click', () => {
             localStorage.setItem('catJourney2Save', JSON.stringify(gameState));
             alert('Game Saved!');
@@ -898,15 +892,11 @@
         loadBtn.addEventListener('click', () => {
             const savedState = localStorage.getItem('catJourney2Save');
             if (savedState) {
-                // To prevent breaking game on loading old saves with missing properties
                 let loadedState = JSON.parse(savedState);
                 let tempState = gameState;
                 gameState = {...tempState, ...loadedState};
-                
-                // Re-initialize non-serializable parts if any
                 gameState.arrivalVisualX = null; 
                 gameState.boundaryVisualX = null;
-
                 alert('Game Loaded!');
                 updateUI();
             } else {
@@ -1038,11 +1028,9 @@
         }
         
         function manageItems(visualX, isSea) {
-            // Remove items that are far behind
             gameState.items = gameState.items.filter(item => item.visualX > visualX - 200);
 
-            // Add new items ahead
-            if (!isSea && Math.random() < 0.02) { // Chance to spawn an item
+            if (Math.random() < 0.02) {
                  const newItem = {
                     visualX: visualX + canvas.width + Math.random() * 200,
                     value: gameState.itemLevel * 5
@@ -1050,7 +1038,6 @@
                  gameState.items.push(newItem);
             }
             
-            // Collect items
             const catVisualX = visualX;
             gameState.items.forEach((item, index) => {
                 if (Math.abs(item.visualX - catVisualX) < 10) {
@@ -1061,7 +1048,6 @@
             });
         }
 
-        // --- Drawing and Game Loop ---
         let lastTime = 0;
         let elapsedGameSeconds = 0;
 
@@ -1070,7 +1056,13 @@
             if (deltaTime > 0.1) deltaTime = 0.1;
             lastTime = timestamp;
 
-            const speedMult = getSpeedMultiplier();
+            if (gameState.boostTimer > 0) {
+                gameState.boostTimer -= deltaTime;
+                if (gameState.boostTimer < 0) gameState.boostTimer = 0;
+                updateUI();
+            }
+
+            const speedMult = getSpeedMultiplier() * (gameState.boostTimer > 0 ? gameState.boostMultiplier : 1);
             let currentL = landmarks[gameState.currentLandmarkIndex];
             let nextL = landmarks[gameState.nextLandmarkIndex];
             
@@ -1165,7 +1157,6 @@
 
             manageItems(gameState.visualScrollX, catIsSea);
 
-            // --- Drawing ---
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             elapsedGameSeconds += deltaTime * speedMult;
